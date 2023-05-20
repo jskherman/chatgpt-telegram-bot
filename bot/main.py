@@ -42,6 +42,7 @@ def main():
         'model': model,
         'presence_penalty': float(os.environ.get('PRESENCE_PENALTY', 0.0)),
         'frequency_penalty': float(os.environ.get('FREQUENCY_PENALTY', 0.0)),
+        'bot_language': os.environ.get('BOT_LANGUAGE', 'en'),
     }
 
     # log deprecation warning for old budget variable names
@@ -49,10 +50,10 @@ def main():
     # remove support for old budget names at some point in the future
     if os.environ.get('MONTHLY_USER_BUDGETS') is not None:
         logging.warning('The environment variable MONTHLY_USER_BUDGETS is deprecated. '
-                     'Please use USER_BUDGETS with BUDGET_PERIOD instead.')
+                        'Please use USER_BUDGETS with BUDGET_PERIOD instead.')
     if os.environ.get('MONTHLY_GUEST_BUDGET') is not None:
         logging.warning('The environment variable MONTHLY_GUEST_BUDGET is deprecated. '
-                     'Please use GUEST_BUDGET with BUDGET_PERIOD instead.')
+                        'Please use GUEST_BUDGET with BUDGET_PERIOD instead.')
 
     telegram_config = {
         'token': os.environ['TELEGRAM_BOT_TOKEN'],
@@ -66,12 +67,14 @@ def main():
         'guest_budget': float(os.environ.get('GUEST_BUDGET', os.environ.get('MONTHLY_GUEST_BUDGET', '100.0'))),
         'stream': os.environ.get('STREAM', 'true').lower() == 'true',
         'proxy': os.environ.get('PROXY', None),
-        'voice_reply_transcript': os.environ.get('VOICE_REPLY_WITH_TRANSCRIPT_ONLY', 'true').lower() == 'true',
+        'voice_reply_transcript': os.environ.get('VOICE_REPLY_WITH_TRANSCRIPT_ONLY', 'false').lower() == 'true',
+        'voice_reply_prompts': os.environ.get('VOICE_REPLY_PROMPTS', '').split(';'),
         'ignore_group_transcriptions': os.environ.get('IGNORE_GROUP_TRANSCRIPTIONS', 'true').lower() == 'true',
         'group_trigger_keyword': os.environ.get('GROUP_TRIGGER_KEYWORD', ''),
         'token_price': float(os.environ.get('TOKEN_PRICE', 0.002)),
-        'image_prices': [float(i) for i in os.environ.get('IMAGE_PRICES',"0.016,0.018,0.02").split(",")],
-        'transcription_price': float(os.environ.get('TOKEN_PRICE', 0.006)),
+        'image_prices': [float(i) for i in os.environ.get('IMAGE_PRICES', "0.016,0.018,0.02").split(",")],
+        'transcription_price': float(os.environ.get('TRANSCRIPTION_PRICE', 0.006)),
+        'bot_language': os.environ.get('BOT_LANGUAGE', 'en'),
     }
 
     # Setup and run ChatGPT and Telegram bot

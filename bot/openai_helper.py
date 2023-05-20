@@ -1,6 +1,7 @@
 from __future__ import annotations
 import datetime
 import logging
+import os
 
 import tiktoken
 
@@ -25,6 +26,29 @@ def default_max_tokens(model: str) -> int:
     :return: The default number of max tokens
     """
     return 1200 if model in GPT_3_MODELS else 2400
+
+# Load translations
+parent_dir_path = os.path.join(os.path.dirname(__file__), os.pardir)
+translations_file_path = os.path.join(parent_dir_path, 'translations.json')
+with open(translations_file_path, 'r', encoding='utf-8') as f:
+    translations = json.load(f)
+
+def localized_text(key, bot_language):
+    """
+    Return translated text for a key in specified bot_language.
+    Keys and translations can be found in the translations.json.
+    """
+    try:
+        return translations[bot_language][key]
+    except KeyError:
+        logging.warning(f"No translation available for bot_language code '{bot_language}' and key '{key}'")
+        # Fallback to English if the translation is not available
+        if key in translations['en']:
+            return translations['en'][key]
+        else:
+            logging.warning(f"No english definition found for key '{key}' in translations.json")
+            # return key as text
+            return key
 
 
 class OpenAIHelper:
@@ -75,11 +99,12 @@ class OpenAIHelper:
             answer = response.choices[0]['message']['content'].strip()
             self.__add_to_history(chat_id, role="assistant", content=answer)
 
+        bot_language = self.config['bot_language']
         if self.config['show_usage']:
             answer += "\n\n---\n" \
-                      f"💰 Tokens used: {str(response.usage['total_tokens'])}" \
-                      f" ({str(response.usage['prompt_tokens'])} prompt," \
-                      f" {str(response.usage['completion_tokens'])} completion)"
+                      f"💰 {str(response.usage['total_tokens'])} {localized_text('stats_tokens', bot_language)}" \
+                      f" ({str(response.usage['prompt_tokens'])} {localized_text('prompt', bot_language)}," \
+                      f" {str(response.usage['completion_tokens'])} {localized_text('completion', bot_language)})"
 
         return answer, response.usage['total_tokens']
 
@@ -105,7 +130,7 @@ class OpenAIHelper:
         tokens_used = str(self.__count_tokens(self.conversations[chat_id]))
 
         if self.config['show_usage']:
-            answer += f"\n\n---\n💰 Tokens used: {tokens_used}"
+            answer += f"\n\n---\n💰 {tokens_used} {localized_text('stats_tokens', self.config['bot_language'])}"
 
         yield answer, tokens_used
 
@@ -116,6 +141,7 @@ class OpenAIHelper:
         :param query: The query to send to the model
         :return: The answer from the model and the number of tokens used
         """
+        bot_language = self.config['bot_language']
         try:
             if chat_id not in self.conversations or self.__max_age_reached(chat_id):
                 self.reset_chat_history(chat_id)
@@ -153,13 +179,13 @@ class OpenAIHelper:
             )
 
         except openai.error.RateLimitError as e:
-            raise Exception(f'⚠️ _OpenAI Rate Limit exceeded_ ⚠️\n{str(e)}') from e
+            raise Exception(f"⚠️ _{localized_text('openai_rate_limit', bot_language)}._ ⚠️\n{str(e)}") from e
 
         except openai.error.InvalidRequestError as e:
-            raise Exception(f'⚠️ _OpenAI Invalid request_ ⚠️\n{str(e)}') from e
+            raise Exception(f"⚠️ _{localized_text('openai_invalid', bot_language)}._ ⚠️\n{str(e)}") from e
 
         except Exception as e:
-            raise Exception(f'⚠️ _An error has occurred_ ⚠️\n{str(e)}') from e
+            raise Exception(f"⚠️ _{localized_text('error', bot_language)}._ ⚠️\n{str(e)}") from e
 
     async def generate_image(self, prompt: str) -> tuple[str, str]:
         """
@@ -167,6 +193,7 @@ class OpenAIHelper:
         :param prompt: The prompt to send to the model
         :return: The image URL and the image size
         """
+        bot_language = self.config['bot_language']
         try:
             response = await openai.Image.acreate(
                 prompt=prompt,
@@ -176,11 +203,14 @@ class OpenAIHelper:
 
             if 'data' not in response or len(response['data']) == 0:
                 logging.error(f'No response from GPT: {str(response)}')
-                raise Exception('⚠️ _An error has occurred_ ⚠️\nPlease try again in a while.')
+                raise Exception(
+                    f"⚠️ _{localized_text('error', bot_language)}._ "
+                    f"⚠️\n{localized_text('try_again', bot_language)}."
+                )
 
             return response['data'][0]['url'], self.config['image_size']
         except Exception as e:
-            raise Exception(f'⚠️ _An error has occurred_ ⚠️\n{str(e)}') from e
+            raise Exception(f"⚠️ _{localized_text('error', bot_language)}._ ⚠️\n{str(e)}") from e
 
     async def transcribe(self, filename):
         """
@@ -192,7 +222,7 @@ class OpenAIHelper:
                 return result.text
         except Exception as e:
             logging.exception(e)
-            raise Exception(f'⚠️ _An error has occurred_ ⚠️\n{str(e)}') from e
+            raise Exception(f"⚠️ _{localized_text('error', self.config['bot_language'])}._ ⚠️\n{str(e)}") from e
 
     def reset_chat_history(self, chat_id, content=''):
         """
@@ -231,8 +261,8 @@ class OpenAIHelper:
         :return: The summary
         """
         messages = [
-            { "role": "assistant", "content": "Summarize this conversation in 700 characters or less" },
-            { "role": "user", "content": str(conversation) }
+            {"role": "assistant", "content": "Summarize this conversation in 700 characters or less"},
+            {"role": "user", "content": str(conversation)}
         ]
         response = await openai.ChatCompletion.acreate(
             model=self.config['model'],
@@ -259,8 +289,8 @@ class OpenAIHelper:
         :param messages: the messages to send
         :return: the number of tokens required
         """
+        model = self.config['model']
         try:
-            model = self.config['model']
             encoding = tiktoken.encoding_for_model(model)
         except KeyError:
             encoding = tiktoken.get_encoding("gpt-3.5-turbo")
@@ -282,7 +312,7 @@ class OpenAIHelper:
                     num_tokens += tokens_per_name
         num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
         return num_tokens
-    
+
     def get_billing_current_month(self):
         """Gets billed usage for current month from OpenAI API.
 
@@ -302,5 +332,5 @@ class OpenAIHelper:
         }
         response = requests.get("https://api.openai.com/dashboard/billing/usage", headers=headers, params=params)
         billing_data = json.loads(response.text)
-        usage_month = billing_data["total_usage"] / 100 # convert cent amount to dollars
+        usage_month = billing_data["total_usage"] / 100  # convert cent amount to dollars
         return usage_month
